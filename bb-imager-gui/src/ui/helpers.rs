@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::{borrow::Cow, sync::LazyLock};
 
 use iced::{
     Element, Radians, Rectangle, Renderer, Theme,
@@ -65,6 +65,25 @@ pub(crate) fn svg_icon_style(theme: &iced::Theme, _: svg::Status) -> svg::Style 
     }
 }
 
+/// The action row along the bottom of every page: the app-info button on the
+/// left (omitted by pages opened *from* it), then the page's own buttons
+/// pushed to the right.
+fn button_row<'a>(
+    with_info: bool,
+    btns: impl IntoIterator<Item = widget::Button<'a, BBImagerMessage>>,
+) -> widget::Row<'a, BBImagerMessage> {
+    let mut lead: Vec<Element<'a, BBImagerMessage>> = Vec::with_capacity(2);
+    if with_info {
+        lead.push(info_btn(INFO_ICON.clone()).into());
+    }
+    lead.push(widget::space::horizontal().into());
+
+    widget::row(lead.into_iter().chain(btns.into_iter().map(Into::into)))
+        .align_y(iced::Center)
+        .width(iced::Length::Fill)
+        .spacing(24)
+}
+
 /// |------|------|
 /// |      |      |
 /// |      | col2 |
@@ -77,17 +96,7 @@ pub(crate) fn page_type1<'a>(
     col2: Element<'a, BBImagerMessage>,
     btns: impl IntoIterator<Item = widget::Button<'a, BBImagerMessage>>,
 ) -> Element<'a, BBImagerMessage> {
-    let row2 = widget::row(
-        [
-            info_btn(INFO_ICON.clone()).into(),
-            widget::space::horizontal().into(),
-        ]
-        .into_iter()
-        .chain(btns.into_iter().map(Into::into)),
-    )
-    .align_y(iced::Center)
-    .width(iced::Length::Fill)
-    .spacing(24);
+    let row2 = button_row(true, btns);
 
     let col2 = widget::column![
         card_box(col2)
@@ -116,81 +125,93 @@ pub(crate) fn page_type1<'a>(
 /// |--------|
 /// |  btns  |
 /// |--------|
+fn single_column<'a>(
+    row1: Element<'a, BBImagerMessage>,
+    with_info: bool,
+    btns: impl IntoIterator<Item = widget::Button<'a, BBImagerMessage>>,
+) -> Element<'a, BBImagerMessage> {
+    widget::column![
+        card_box(row1).height(iced::Fill).width(iced::Fill),
+        button_row(with_info, btns)
+    ]
+    .padding(24)
+    .spacing(24)
+    .into()
+}
+
+/// A [`single_column`] page reachable from the main flow.
 pub(crate) fn page_type2<'a>(
     row1: Element<'a, BBImagerMessage>,
     btns: impl IntoIterator<Item = widget::Button<'a, BBImagerMessage>>,
 ) -> Element<'a, BBImagerMessage> {
-    let row2 = widget::row(
-        [
-            info_btn(INFO_ICON.clone()).into(),
-            widget::space::horizontal().into(),
-        ]
-        .into_iter()
-        .chain(btns.into_iter().map(Into::into)),
-    )
-    .align_y(iced::Center)
-    .width(iced::Length::Fill)
-    .spacing(24);
-
-    widget::column![card_box(row1).height(iced::Fill).width(iced::Fill), row2]
-        .padding(24)
-        .spacing(24)
-        .into()
+    single_column(row1, true, btns)
 }
 
-/// |--------|
-/// |        |
-/// |  row1  |
-/// |        |
-/// |--------|
-/// |  btns  |
-/// |--------|
+/// A [`single_column`] page opened from the app-info button, which therefore
+/// does not offer one of its own.
 pub(crate) fn page_type3<'a>(
     row1: Element<'a, BBImagerMessage>,
     btns: impl IntoIterator<Item = widget::Button<'a, BBImagerMessage>>,
 ) -> Element<'a, BBImagerMessage> {
-    let row2 = widget::row(
-        [widget::space::horizontal().into()]
-            .into_iter()
-            .chain(btns.into_iter().map(Into::into)),
-    )
-    .align_y(iced::Center)
-    .width(iced::Length::Fill)
-    .spacing(24);
-
-    widget::column![card_box(row1).height(iced::Fill).width(iced::Fill), row2]
-        .padding(24)
-        .spacing(24)
-        .into()
+    single_column(row1, false, btns)
 }
 
+/// A labelled ring, optionally overlaid with a progress arc.
 #[derive(Debug)]
-pub(crate) struct ProgressCircle {
-    progress: f32,
+pub(crate) struct CircleGauge {
+    label: Cow<'static, str>,
+    /// Fraction of the ring covered by the foreground arc. `None` draws the
+    /// ring alone, for a run that has already finished.
+    arc: Option<f32>,
+    /// Colour of the ring. `None` takes the themed background, so that the
+    /// ring reads as the not-yet-filled remainder behind a progress arc.
+    ring_color: Option<iced::Color>,
+    arc_color: iced::Color,
     thickness: f32,
-    color: iced::Color,
     cache: canvas::Cache,
 }
 
-impl ProgressCircle {
-    pub(crate) fn new(
+impl CircleGauge {
+    /// A gauge tracking a run in progress, labelled with its percentage.
+    pub(crate) fn progress(
         progress: f32,
         thickness: impl Into<f32>,
         color: iced::Color,
     ) -> widget::Canvas<Self, BBImagerMessage> {
-        widget::canvas(Self {
-            progress,
-            cache: canvas::Cache::new(),
+        let progress = progress.clamp(0.0, 1.0);
+
+        Self::canvas(Self {
+            label: Cow::Owned(format!("{}%", (progress * 100.0).floor())),
+            arc: Some(progress),
+            ring_color: None,
+            arc_color: color,
             thickness: thickness.into(),
-            color,
+            cache: canvas::Cache::new(),
         })
-        .width(iced::Fill)
-        .height(iced::Fill)
+    }
+
+    /// A plain labelled ring, for a run that has finished.
+    pub(crate) fn labelled(
+        label: &'static str,
+        thickness: impl Into<f32>,
+        color: iced::Color,
+    ) -> widget::Canvas<Self, BBImagerMessage> {
+        Self::canvas(Self {
+            label: Cow::Borrowed(label),
+            arc: None,
+            ring_color: Some(color),
+            arc_color: color,
+            thickness: thickness.into(),
+            cache: canvas::Cache::new(),
+        })
+    }
+
+    fn canvas(self) -> widget::Canvas<Self, BBImagerMessage> {
+        widget::canvas(self).width(iced::Fill).height(iced::Fill)
     }
 }
 
-// Then, we implement the `Program` trait
-impl<Message> canvas::Program<Message> for ProgressCircle {
+impl<Message> canvas::Program<Message> for CircleGauge {
     // No internal state
     type State = ();
 
@@ -206,43 +227,40 @@ impl<Message> canvas::Program<Message> for ProgressCircle {
             let center = iced::Point::new(bounds.width / 2.0, bounds.height / 2.0);
             let radius = bounds.width.min(bounds.height) / 2.0 - self.thickness;
 
-            // Background ring
-            let bg = canvas::Path::circle(center, radius);
             frame.stroke(
-                &bg,
+                &canvas::Path::circle(center, radius),
                 canvas::Stroke::default()
                     .with_width(self.thickness)
-                    .with_color(theme.palette().background),
+                    .with_color(self.ring_color.unwrap_or(theme.palette().background)),
             );
 
-            // Foreground arc
-            let angle = self.progress.clamp(0.0, 1.0) * 2.0 * Radians::PI;
+            if let Some(progress) = self.arc {
+                let angle = progress * 2.0 * Radians::PI;
+                let arc = canvas::path::Arc {
+                    center,
+                    radius,
+                    start_angle: iced::Radians::PI / 2.0,
+                    end_angle: iced::Radians::PI / 2.0 + angle,
+                };
 
-            let arc = canvas::path::Arc {
-                center,
-                radius,
-                start_angle: iced::Radians::PI / 2.0,
-                end_angle: iced::Radians::PI / 2.0 + angle,
-            };
-            let arc = canvas::Path::new(|b| b.arc(arc));
+                frame.stroke(
+                    &canvas::Path::new(|b| b.arc(arc)),
+                    canvas::Stroke::default()
+                        .with_line_cap(canvas::LineCap::Round)
+                        .with_width(self.thickness)
+                        .with_color(self.arc_color),
+                );
+            }
 
-            frame.stroke(
-                &arc,
-                canvas::Stroke::default()
-                    .with_line_cap(canvas::LineCap::Round)
-                    .with_width(self.thickness)
-                    .with_color(self.color),
-            );
+            // Longer labels have to be set smaller to stay inside the ring.
+            let frac = if self.label.len() > 4 { 3.0 } else { 2.0 };
 
-            // Progress Report
-            let prog = (self.progress.clamp(0.0, 1.0) * 100.0).floor();
-            let prog_pretty = format!("{}%", prog);
             frame.fill_text(canvas::Text {
-                content: prog_pretty,
+                content: self.label.to_string(),
                 position: center,
                 align_x: iced::Center.into(),
                 align_y: iced::Center.into(),
-                size: (radius / 2.0).into(),
+                size: (radius / frac).into(),
                 color: theme.palette().text,
                 font: constants::FONT_BOLD,
                 ..Default::default()
@@ -316,73 +334,6 @@ pub(crate) fn board_view_pane<'a>(
         cols.push(widget::center(widget::row(btns).spacing(16))),
         &state.scroll_id,
     )
-}
-
-#[derive(Debug)]
-pub(crate) struct CircleBar {
-    label: &'static str,
-    thickness: f32,
-    color: iced::Color,
-    cache: canvas::Cache,
-}
-
-impl CircleBar {
-    pub(crate) fn new(
-        label: &'static str,
-        thickness: impl Into<f32>,
-        color: iced::Color,
-    ) -> widget::Canvas<Self, BBImagerMessage> {
-        widget::canvas(Self {
-            label,
-            cache: canvas::Cache::new(),
-            thickness: thickness.into(),
-            color,
-        })
-        .width(iced::Fill)
-        .height(iced::Fill)
-    }
-}
-
-impl<Message> canvas::Program<Message> for CircleBar {
-    type State = ();
-
-    fn draw(
-        &self,
-        _state: &(),
-        renderer: &Renderer,
-        theme: &Theme,
-        bounds: Rectangle,
-        _cursor: mouse::Cursor,
-    ) -> Vec<canvas::Geometry> {
-        let geometry = self.cache.draw(renderer, bounds.size(), |frame| {
-            let center = iced::Point::new(bounds.width / 2.0, bounds.height / 2.0);
-            let radius = bounds.width.min(bounds.height) / 2.0 - self.thickness;
-
-            // Background ring
-            let bg = canvas::Path::circle(center, radius);
-            frame.stroke(
-                &bg,
-                canvas::Stroke::default()
-                    .with_width(self.thickness)
-                    .with_color(self.color),
-            );
-
-            let frac = if self.label.len() > 4 { 3.0 } else { 2.0 };
-
-            frame.fill_text(canvas::Text {
-                content: self.label.to_string(),
-                position: center,
-                align_x: iced::Center.into(),
-                align_y: iced::Center.into(),
-                size: (radius / frac).into(),
-                color: theme.palette().text,
-                font: constants::FONT_BOLD,
-                ..Default::default()
-            });
-        });
-
-        vec![geometry]
-    }
 }
 
 pub(crate) fn detail_entry<'a>(
@@ -544,8 +495,11 @@ pub(crate) fn progress_finish_view<'a>(
     color: iced::Color,
     details: impl widget::text::IntoFragment<'a>,
 ) -> Element<'a, BBImagerMessage> {
-    widget::column![CircleBar::new(label, 10.0f32, color), widget::text(details)]
-        .align_x(iced::Center)
-        .padding(VIEW_COL_PADDING)
-        .into()
+    widget::column![
+        CircleGauge::labelled(label, 10.0f32, color),
+        widget::text(details)
+    ]
+    .align_x(iced::Center)
+    .padding(VIEW_COL_PADDING)
+    .into()
 }

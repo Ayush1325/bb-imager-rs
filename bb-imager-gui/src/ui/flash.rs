@@ -6,7 +6,7 @@ use iced::{
 use crate::{
     BBImagerMessage, constants,
     state::FlashingState,
-    ui::helpers::{self, ProgressCircle, VIEW_COL_PADDING, detail_entry, page_type1},
+    ui::helpers::{self, CircleGauge, VIEW_COL_PADDING, detail_entry, page_type1},
 };
 
 pub(crate) fn view(state: &FlashingState) -> Element<'_, BBImagerMessage> {
@@ -28,7 +28,7 @@ fn progress_view(state: &FlashingState) -> Element<'_, BBImagerMessage> {
         bb_flasher::DownloadFlashingStatus::Customizing => (0.99, "Customizing ..."),
     };
 
-    let progress = ProgressCircle::new(prog, 10.0f32, constants::TONGUE_ORANGE);
+    let progress = CircleGauge::progress(prog, 10.0f32, constants::TONGUE_ORANGE);
 
     let mut col = widget::column![progress, widget::text(label)];
     if let Some(x) = state.time_remaining() {
