@@ -18,7 +18,7 @@ members = [
         "bb-iced-widgets",
         "bb-os-list-generator",
         "bb-imager-gui-ui",
-        "bb-imager-db",
+        "bb-imager-db", "bb-imager-tui-ui",
 ]
 
 # Shipped packages: opt in with `make ... CARGO_PROFILE=dist`. `release` keeps Rust's defaults so
