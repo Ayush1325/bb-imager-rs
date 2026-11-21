@@ -1,0 +1,17 @@
+[package]
+name = "bb-imager-tui-ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+ratatui = "0.30"
+
+[dev-dependencies]
+bb-config = { path = "../bb-config" }
+serde_json = "1.0.150"
+
+[lints]
+workspace = true

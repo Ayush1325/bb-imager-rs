@@ -245,7 +245,7 @@ _check_gui_common:
 _check_gui: _check_gui_common
 	$(_CARGO_CHECK) --all-features -p bb-iced-widgets -p bb-imager-gui-ui -p bb-os-list-generator -p bb-imager-db
 	$(_CARGO_CHECK) $(_CARGO_CHECK_NON_WORKSPACE_FLAGS) -p bb-imager-gui ${_RUST_ARGS_GUI} --features updater,zepto_i2c,pre-release
-	
+
 ## housekeeping: fmt-check: Check formatting of all crates.
 .PHONY: fmt-check
 fmt-check:
@@ -339,7 +339,7 @@ endif
 	$(info Showing Diff)
 	git diff
 	@while [ -z "$$CONTINUE" ]; do \
-        	read -r -p "Create git commit and tag [y/N]: " CONTINUE; \
+		read -r -p "Create git commit and tag [y/N]: " CONTINUE; \
 	done ; \
 	[ $$CONTINUE = "y" ] || [ $$CONTINUE = "Y" ] || (echo "Aborting."; exit 1;)
 	git add Cargo.toml Cargo.lock bb-imager-gui/assets/packages/linux/flatpak/org.beagleboard.imagingutility.metainfo.xml docs/antora.yml \
@@ -642,6 +642,11 @@ preview-gui-configuration-cloudinit:
 .PHONY: preview-gui-board-selection
 preview-gui-board-selection:
 	$(_DIOXUS_CLI) serve -p bb-imager-gui-ui --example board-selection --features debug
+
+## preview: preview-tui-board-selection: Preview TUI Board selection page.
+.PHONY: preview-tui-board-selection
+preview-tui-board-selection:
+	$(CARGO_PATH) run -p bb-imager-tui-ui --example board-selection
 
 ## preview: preview-gui-image-selection: Preview GUI OS image selection page.
 .PHONY: preview-gui-image-selection
